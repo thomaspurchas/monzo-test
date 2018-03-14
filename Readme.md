@@ -13,7 +13,7 @@ available from HomeBrew (`brew install graphviz`). For other platforms visit the
 Once setup with dependences in your `GOPATH` run `go run monzo.go`. This will output log data to
 `stderr` and dot output to `stdout`.
 
-To render visualisation (you need [GraphViz][1]) run `go run monzo.go | dot -Tpdf output.pdf`. You
-can render to other formats, but PDF is advised due to the size of the graph.
+To render visualisation (you need [GraphViz][1]) run `go run monzo.go | dot -Tpdf -o output.pdf`.
+You can render to other formats, but PDF is advised due to the size of the graph.
 
 [1]:https://www.graphviz.org/
