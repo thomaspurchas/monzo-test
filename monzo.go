@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"io/ioutil"
 	"net/url"
+	"os"
 
 	"github.com/PuerkitoBio/purell"
 	"github.com/gonum/graph/encoding/dot"
@@ -11,11 +11,6 @@ import (
 	"github.com/thomaspurchas/monzo-test/crawler"
 	"github.com/thomaspurchas/monzo-test/grapher"
 )
-
-const dotHeader = `rankdir="LR";
-concentrate=true;
-splines=polyline;
-ranksep="2 equally"\n`
 
 func pass(u *url.URL) *url.URL {
 	return u
@@ -37,5 +32,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	err = ioutil.WriteFile("out.dot", data, 0644)
+
+	os.Stdout.Write(data)
 }
