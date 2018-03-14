@@ -2,7 +2,7 @@ package crawler
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -12,7 +12,7 @@ import (
 
 func fetchURL(ctx context.Context, w *worker, u *URLContext) {
 	defer w.waitGroup.Done()
-	defer fmt.Println("Finished processing:", u.URL)
+	defer log.Println("Finished processing:", u.URL)
 
 	timeout := time.Duration(5 * time.Second)
 	client := http.Client{
@@ -20,10 +20,10 @@ func fetchURL(ctx context.Context, w *worker, u *URLContext) {
 	}
 
 	res, err := client.Get(u.NormalisedURL.String())
-	fmt.Printf("Fetched: %s\n", u.URL)
 	if err != nil {
 		return
 	}
+	log.Printf("Fetched: %s\n", u.URL)
 
 	doc, err := goquery.NewDocumentFromResponse(res)
 
@@ -83,7 +83,7 @@ func processDoc(doc *goquery.Document) []*url.URL {
 
 			result = append(result, au)
 		} else {
-			fmt.Printf("Ignored: unable to parse: %s", u)
+			log.Printf("Ignored: unable to parse: %s", u)
 		}
 
 	}

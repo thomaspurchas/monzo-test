@@ -2,7 +2,7 @@ package crawler
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"sync"
@@ -51,16 +51,17 @@ func newWorker(ctx context.Context, opt *Options, seed *URLContext) *worker {
 func (w *worker) run() {
 	defer close(w.results)
 	defer close(w.externalResults)
-	defer fmt.Printf("Worker for '%s' finished \n", w.host)
+	defer log.Printf("Worker for '%s' finished \n", w.host)
 
-	var fetchDone chan struct{}
-
+	w.waitGroup.Add(1)
 	go func() {
+		defer w.waitGroup.Done()
+
 		f := &fetchResult{}
 		f.url = w.seed
 		f.foundURLs = []*url.URL{w.seed.NormalisedURL}
 		f.resp = make(chan struct{})
-		fmt.Println(f)
+
 		select {
 		case w.fetchResults <- f:
 		case <-w.ctx.Done():
@@ -71,12 +72,14 @@ func (w *worker) run() {
 		}
 	}()
 
+	fetchDone := w.fetchDone()
+
 	for {
 		quit := w.ctx.Done()
 		select {
 		case <-quit:
 			// Exit if we are told to
-			fmt.Printf("Worker for '%s' stopping due to quit signal\n", w.host)
+			log.Printf("Worker for '%s' stopping due to quit signal\n", w.host)
 			return
 		case r := <-w.fetchResults:
 			// Return successfully fetched page to the crawler.
@@ -103,20 +106,8 @@ func (w *worker) run() {
 			}
 			// Send resp to fetcher, allowing it to die
 			r.resp <- struct{}{}
-
-			if fetchDone == nil {
-				// Once the seed has been grabbed, we can swap out our nil channel
-				// for the real one, that will return a struct{} once all of the
-				// fetch goroutines have finished.
-
-				// This works because the fetchResults channel is not buffered
-				// so fetching goroutines won't exit until their results have
-				// been consumed, ensuring that the fetchDone channel won't
-				// fire until we have run out of pages to crawl on this domain
-				fetchDone = w.fetchDone()
-			}
 		case <-fetchDone:
-			fmt.Printf("Finished fetching from host: %s\n", w.host)
+			log.Printf("Finished fetching from host: %s\n", w.host)
 			return
 		}
 	}
@@ -125,29 +116,27 @@ func (w *worker) run() {
 func (w *worker) fetchDone() chan struct{} {
 	c := make(chan struct{})
 	go func() {
-		fmt.Println("Fetcher done setup")
 		w.waitGroup.Wait()
-		fmt.Println("All fetchers done")
+		log.Println("All fetchers done")
 		c <- struct{}{}
-		fmt.Println("Sent finish signal")
 	}()
 	return c
 }
 
 func (w *worker) fetchURL(u *URLContext) {
 	if w.robotsAllowed(u) {
-		fmt.Printf("Fetching: %s\n", u)
+		log.Printf("Fetching: %s\n", u)
 
 		w.waitGroup.Add(1)
 		go fetchURL(w.ctx, w, u)
 	} else {
-		fmt.Printf("Disallowed by robots: %s\n", u.NormalisedURL)
+		log.Printf("Disallowed by robots: %s\n", u.NormalisedURL)
 	}
 }
 
 func (w *worker) robotsAllowed(u *URLContext) bool {
 	if w.robots == nil {
-		fmt.Println("Fetching robots.txt")
+		log.Println("Fetching robots.txt")
 		var robots *robotstxt.RobotsData
 		robotsURL, _ := url.Parse(robotsPath)
 

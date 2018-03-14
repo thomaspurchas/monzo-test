@@ -2,7 +2,7 @@ package crawler
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"net/url"
 	"sync"
 
@@ -49,7 +49,6 @@ func (c *Crawler) Crawl(seed string) {
 	c.startSeedWorker(seed)
 
 	done := c.workersDone()
-	fmt.Println("Enter crawer main loop")
 	for {
 		select {
 		case u := <-c.externalResults:
@@ -67,7 +66,7 @@ func (c *Crawler) Crawl(seed string) {
 func (c *Crawler) startWorker(uctx *URLContext) {
 	w := newWorker(c.ctx, c.opt, uctx)
 
-	fmt.Printf("Starting worker for: %s\n", w.host)
+	log.Printf("Starting worker for: %s\n", w.host)
 	c.wg.Add(1)
 	go func() {
 		w.run()
@@ -122,17 +121,6 @@ func (c *Crawler) addResultsChannel(in <-chan *URLContext) {
 		}
 	}()
 }
-
-// func mergeResults(cs ...[2]<-chan *urlContext) <-chan [2]*urlContext {
-// 	var wg sync.WaitGroup
-// 	out := make(chan [2]*urlContext)
-
-// 	output := func(<-chan *urlContext, pos) {
-
-// 	}
-
-// 	return out
-// }
 
 func cleanURL(u *url.URL, flags purell.NormalizationFlags) *url.URL {
 	s := purell.NormalizeURL(u, flags)
