@@ -1,32 +1,14 @@
 package grapher
 
 import (
-	"fmt"
-
 	"github.com/gonum/graph"
 	"github.com/gonum/graph/simple"
 	"github.com/thomaspurchas/monzo-test/crawler"
 )
 
-type Node struct {
-	id   int
-	name string
-}
-
-func (n Node) ID() int {
-	return n.id
-}
-func (n Node) DOTID() string {
-	return fmt.Sprintf("\"%s\"", n.name)
-}
-
-type Graph struct {
-	g graph.Graph
-}
-
-func BuildGraph(uchan <-chan *crawler.URLContext) *simple.DirectedGraph {
+func BuildGraph(uchan <-chan *crawler.URLContext) graph.Graph {
 	nodes := make(map[string]Node)
-	g := simple.NewDirectedGraph(1.0, 1.0)
+	g := newGraph()
 
 	for u := range uchan {
 		n := Node{id: g.NewNodeID(), name: u.NormalisedURL.String()}
