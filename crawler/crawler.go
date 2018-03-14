@@ -1,12 +1,12 @@
 package crawler
 
 import (
+	"context"
 	"fmt"
-	"net/http"
 	"net/url"
 	"sync"
 
-	"github.com/PuerkitoBio/goquery"
+	"github.com/PuerkitoBio/purell"
 )
 
 type Page struct {
@@ -19,68 +19,123 @@ type vistedURLs struct {
 	mux  sync.Mutex
 }
 
-func filterURLs(urls chan string) chan string {
-	c := make(chan string)
-	vistedURLs := vistedURLs{urls: make(map[string]struct{})}
-	go func() {
-		for s := range urls {
-			u, err := url.Parse(s)
+type Crawler struct {
+	workers         map[string]*worker
+	visitedHosts    map[string]struct{}
+	externalResults chan *URLContext
+	wg              sync.WaitGroup
 
-			if err == nil && u.Hostname() == "monzo.com" {
-				if _, ok := vistedURLs.urls[u.String()]; ok == false {
-					c <- u.String()
-					vistedURLs.urls[u.String()] = struct{}{}
-				}
-			} else {
-				fmt.Printf("Dropping %s", u.String())
-			}
-		}
-	}()
+	Results chan *URLContext
+
+	ctx context.Context
+	opt *Options
+}
+
+func NewCrawler(ctx context.Context, opt *Options) *Crawler {
+	c := &Crawler{}
+	c.workers = make(map[string]*worker)
+	c.visitedHosts = make(map[string]struct{})
+
+	c.Results = make(chan *URLContext)
+	c.externalResults = make(chan *URLContext)
+
+	c.ctx = ctx
+	c.opt = opt
 	return c
 }
 
-func Crawl(URL string) <-chan Page {
-	c := make(chan Page)
-	urlsToVisit := make(chan string, 1)
+func (c *Crawler) Crawl(seed string) {
+	defer close(c.Results)
+	c.startSeedWorker(seed)
 
-	// vistedURLs := vistedURLs{urls: make(map[string]struct{})}
-
-	urlsToVisit <- URL
-
-	filteredURLs := filterURLs(urlsToVisit)
-
-	for currentURL := range filteredURLs {
-		fmt.Println(currentURL)
-		res, err := http.Get(currentURL)
-		if err != nil {
-			panic(err)
-		}
-
-		doc, err := goquery.NewDocumentFromResponse(res)
-
-		if err != nil {
-			panic(err)
-		}
-
-		urls := doc.Find("a[href]").Map(func(_ int, s *goquery.Selection) string {
-			val, _ := s.Attr("href")
-
-			u, err := url.Parse(val)
-
-			if err != nil {
-				panic(err)
+	done := c.workersDone()
+	fmt.Println("Enter crawer main loop")
+	for {
+		select {
+		case u := <-c.externalResults:
+			if c.opt.MultipleDomains {
+				if _, exists := c.workers[u.NormalisedURL.Hostname()]; !exists {
+					c.startWorker(u)
+				}
 			}
-
-			u = doc.Url.ResolveReference(u)
-			return u.String()
-		})
-
-		go func(urls []string, urlChan chan string) {
-			for _, i := range urls {
-				urlChan <- i
-			}
-		}(urls, urlsToVisit)
+		case <-done:
+			return
+		}
 	}
+}
 
-	return c
+func (c *Crawler) startWorker(uctx *URLContext) {
+	w := newWorker(c.ctx, c.opt, uctx)
+
+	fmt.Printf("Starting worker for: %s\n", w.host)
+	c.wg.Add(1)
+	go func() {
+		w.run()
+		c.wg.Done()
+	}()
+
+	c.workers[w.host] = w
+	c.addResultsChannel(w.results)
+	c.addExternalChannel(w.externalResults)
+}
+
+func (c *Crawler) startSeedWorker(seed string) {
+	u, _ := url.Parse(seed)
+	uctx := &URLContext{URL: u,
+		NormalisedURL: cleanURL(u, c.opt.NormalisationFilters)}
+
+	c.startWorker(uctx)
+}
+
+func (c *Crawler) workersDone() <-chan struct{} {
+	out := make(chan struct{})
+	go func() {
+		c.wg.Wait()
+		out <- struct{}{}
+	}()
+	return out
+}
+
+func (c *Crawler) addExternalChannel(in <-chan *URLContext) {
+	go func() {
+		quit := c.ctx.Done()
+		for n := range in {
+			select {
+			case c.externalResults <- n:
+			case <-quit:
+				return
+			}
+
+		}
+	}()
+}
+
+func (c *Crawler) addResultsChannel(in <-chan *URLContext) {
+	go func() {
+		quit := c.ctx.Done()
+		for n := range in {
+			select {
+			case c.Results <- n:
+			case <-quit:
+				return
+			}
+		}
+	}()
+}
+
+// func mergeResults(cs ...[2]<-chan *urlContext) <-chan [2]*urlContext {
+// 	var wg sync.WaitGroup
+// 	out := make(chan [2]*urlContext)
+
+// 	output := func(<-chan *urlContext, pos) {
+
+// 	}
+
+// 	return out
+// }
+
+func cleanURL(u *url.URL, flags purell.NormalizationFlags) *url.URL {
+	s := purell.NormalizeURL(u, flags)
+	u, _ = url.Parse(s)
+	return u
 }
